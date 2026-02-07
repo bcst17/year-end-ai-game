@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Trophy, Send, Loader2, BrainCircuit, RefreshCw, MessageSquareText, ListFilter, Users, Sparkles, Zap } from 'lucide-react';
+import { Trophy, Send, Loader2, BrainCircuit, RefreshCw, MessageSquare, ListFilter, Users, Sparkles, Zap } from 'lucide-react';
 
 /**
- * --- 尾牙 AI 互動擂台：修正編譯版 ---
+ * --- 尾牙 AI 互動擂台：圖示相容修正版 ---
  * 修正重點：
- * 1. 修正 lucide-react 匯入錯誤：將 MessageSquareQuote 更換為 MessageSquareText。
- * 2. 保持單機穩定運作，移除所有 Firebase 依賴。
- * 3. 確保 Vercel Build 流程不會因圖示名稱錯誤而中斷。
+ * 1. 解決 lucide-react 版本相容性問題：將 MessageSquareText 改為 MessageSquare。
+ * 2. 移除所有 Firebase 依賴，確保單機運作絕對穩定。
+ * 3. 優化 Vercel Build 流程，排除所有因圖示名稱導致的導出錯誤。
  */
 
 // --- 輔助函式：安全讀取環境變數 ---
@@ -120,9 +120,9 @@ export default function App() {
       <header className="w-full max-w-7xl flex justify-between items-center mb-8 h-16 border-b border-slate-900 pb-4">
         <div className="flex items-center gap-2">
           <BrainCircuit size={32} className="text-yellow-500" />
-          <h1 className="text-xl font-black italic tracking-tighter uppercase">AI Party Solo</h1>
+          <h1 className="text-xl font-black italic tracking-tighter uppercase text-white">AI Party Solo</h1>
         </div>
-        <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-4 py-2 rounded-full">
+        <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-4 py-2 rounded-full shadow-lg">
           <Zap size={14} className="text-yellow-500 fill-yellow-500" />
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">穩定單機版</span>
         </div>
@@ -131,10 +131,10 @@ export default function App() {
       <main className="w-full max-w-7xl flex-grow">
         {gameState === 'LOBBY' && (
           <div className="max-w-xl mx-auto bg-slate-900 border border-slate-800 rounded-[40px] p-10 text-center space-y-8 animate-in fade-in zoom-in duration-500 shadow-2xl">
-            <h2 className="text-5xl font-black tracking-tighter uppercase leading-tight">尾牙<br/><span className="text-yellow-500 underline decoration-4 underline-offset-8">智慧大擂台</span></h2>
+            <h2 className="text-5xl font-black tracking-tighter uppercase leading-tight text-white">尾牙<br/><span className="text-yellow-500 underline decoration-4 underline-offset-8 text-white">智慧大擂台</span></h2>
             <div className="space-y-4">
               <input type="text" maxLength={10} placeholder="輸入您的參賽暱稱" className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:border-yellow-500 outline-none text-center text-xl font-bold transition-all text-white" value={userName} onChange={(e) => setUserName(e.target.value)} />
-              <button onClick={handleStart} disabled={!userName.trim()} className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-slate-950 font-black py-5 rounded-2xl text-xl transition-all active:scale-95 shadow-xl">
+              <button onClick={handleStart} disabled={!userName.trim()} className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-slate-950 font-black py-5 rounded-2xl text-xl transition-all active:scale-95 shadow-xl shadow-yellow-500/10">
                 🚀 進入賽場
               </button>
             </div>
@@ -142,13 +142,13 @@ export default function App() {
         )}
 
         {(gameState === 'PLAYING' || gameState === 'END') && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full min-h-[600px] animate-in slide-in-from-bottom">
-            <div className="lg:col-span-7 space-y-6 flex flex-col">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full min-h-[600px] animate-in slide-in-from-bottom duration-500">
+            <div className="lg:col-span-7 space-y-6 flex flex-col h-full">
               {gameState === 'PLAYING' ? (
                 <>
                   <div className="bg-slate-900 border border-slate-800 p-8 rounded-[32px] shadow-xl">
                     <span className="bg-yellow-500/10 text-yellow-500 text-[10px] font-black px-3 py-1 rounded-full border border-yellow-500/20 uppercase tracking-widest">Q{currentIdx + 1} / {QUESTIONS.length}</span>
-                    <h2 className="text-3xl font-bold mt-4 leading-tight">{QUESTIONS[currentIdx].text}</h2>
+                    <h2 className="text-3xl font-bold mt-4 leading-tight text-white">{QUESTIONS[currentIdx].text}</h2>
                   </div>
                   <div className="relative group flex-grow">
                     <textarea value={currentInput} onChange={(e) => setCurrentInput(e.target.value)} className="w-full h-full min-h-[250px] bg-slate-900 border-2 border-slate-800 rounded-[32px] p-8 text-xl outline-none focus:border-yellow-500 transition-all resize-none shadow-xl text-white" disabled={isJudging || aiResult} placeholder="在此輸入答案..." />
@@ -166,9 +166,9 @@ export default function App() {
               ) : (
                 <div className="bg-slate-900 border border-slate-800 rounded-[40px] p-12 text-center flex flex-col justify-center items-center shadow-2xl h-full min-h-[400px]">
                   <Trophy size={80} className="text-yellow-500 mb-4 animate-bounce" />
-                  <h2 className="text-5xl font-black italic tracking-tighter uppercase">挑戰結束</h2>
+                  <h2 className="text-5xl font-black italic tracking-tighter uppercase text-white">挑戰結束</h2>
                   <div className="bg-slate-950 p-8 rounded-[32px] border border-slate-800 w-full max-w-sm shadow-inner mt-4">
-                    <p className="text-xs font-black text-slate-600 uppercase mb-2">最終累計得分</p>
+                    <p className="text-xs font-black text-slate-600 uppercase mb-2 text-white">最終累計得分</p>
                     <p className="text-7xl font-black text-yellow-500 tabular-nums">{totalScore}</p>
                   </div>
                   <button onClick={() => window.location.reload()} className="mt-8 text-slate-500 hover:text-white transition-all font-bold text-sm uppercase flex items-center gap-2"><RefreshCw size={16} /> 重新挑戰</button>
@@ -190,13 +190,13 @@ export default function App() {
                   {localHistory.length === 0 ? <p className="text-slate-700 text-center py-10 italic">尚未提交答案...</p> : 
                     Object.entries(groupedFeed).map(([qText, answers]) => (
                       <div key={qText} className="space-y-3">
-                        <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700"><MessageSquareText size={14} className="text-yellow-500 flex-shrink-0" /><span className="text-xs font-bold text-slate-300 truncate">{qText}</span></div>
+                        <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700"><MessageSquare size={14} className="text-yellow-500 flex-shrink-0" /><span className="text-xs font-bold text-slate-300 truncate">{qText}</span></div>
                         <div className="space-y-2 pl-2">
                           {answers.map((msg, idx) => (
-                            <div key={idx} className="bg-slate-800/30 p-3 rounded-xl border border-slate-700/30 text-xs">
+                            <div key={idx} className="bg-slate-800/30 p-3 rounded-xl border border-slate-700/30 text-xs shadow-inner">
                               <div className="flex justify-between items-center mb-1"><span className="font-black text-blue-400">{msg.userName}</span><span className="text-yellow-500 font-bold">+{msg.score}</span></div>
-                              <p className="text-slate-200 mb-1">「{msg.answer}」</p>
-                              <p className="text-[10px] italic text-slate-500">{msg.feedback}</p>
+                              <p className="text-slate-200 mb-1 leading-relaxed">「{msg.answer}」</p>
+                              <p className="text-[10px] italic text-slate-500 border-t border-slate-700/50 pt-1 mt-1">{msg.feedback}</p>
                             </div>
                           ))}
                         </div>
@@ -209,7 +209,7 @@ export default function App() {
           </div>
         )}
       </main>
-      <footer className="mt-8 text-center opacity-30 pb-8 tracking-[0.3em] text-[8px] uppercase text-slate-500">Standalone AI Engine v13.1 | Build Fixed</footer>
+      <footer className="mt-8 text-center opacity-30 pb-8 tracking-[0.3em] text-[8px] uppercase text-slate-500">Standalone AI Engine v14.0 | Build Success Fix</footer>
     </div>
   );
 }
