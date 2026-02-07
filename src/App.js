@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Trophy, Send, Loader2, BrainCircuit, RefreshCw, MessageSquareQuote, ListFilter, Users, Sparkles, Zap } from 'lucide-react';
+import { Trophy, Send, Loader2, BrainCircuit, RefreshCw, MessageSquareText, ListFilter, Users, Sparkles, Zap } from 'lucide-react';
 
 /**
- * --- 尾牙 AI 互動擂台：單機穩定版 ---
+ * --- 尾牙 AI 互動擂台：修正編譯版 ---
  * 修正重點：
- * 1. 徹底移除 Firebase 依賴，解決「權限不足」與「初始化失敗」導致的白屏問題。
- * 2. 僅保留 Gemini AI 語義評分功能。
- * 3. 排行榜與動態牆改為本地儲存（Local State），僅記錄當次遊戲數據。
+ * 1. 修正 lucide-react 匯入錯誤：將 MessageSquareQuote 更換為 MessageSquareText。
+ * 2. 保持單機穩定運作，移除所有 Firebase 依賴。
+ * 3. 確保 Vercel Build 流程不會因圖示名稱錯誤而中斷。
  */
 
-// --- 輔助函式：安全讀取環境變數 (Vercel 部署用) ---
+// --- 輔助函式：安全讀取環境變數 ---
 const getSafeEnv = (key) => {
   try {
     if (typeof process !== 'undefined' && process.env && process.env[key]) {
@@ -38,13 +38,10 @@ export default function App() {
   const [totalScore, setTotalScore] = useState(0);
   const [isJudging, setIsJudging] = useState(false);
   const [aiResult, setAiResult] = useState(null); 
-  const [localHistory, setLocalHistory] = useState([]); // 本地答題紀錄
-  const [errorMsg, setErrorMsg] = useState('');
+  const [localHistory, setLocalHistory] = useState([]); 
 
-  // 獲取 Gemini API Key
   const apiKey = getSafeEnv('REACT_APP_GEMINI_API_KEY') || ""; 
 
-  // 分類答案邏輯 (按題目分類)
   const groupedFeed = useMemo(() => {
     return localHistory.reduce((acc, curr) => {
       const qText = String(curr.question || "未分類");
@@ -56,7 +53,7 @@ export default function App() {
 
   const scoreWithAI = async (userAnswer, reference) => {
     if (!apiKey) {
-      alert("系統偵測不到 REACT_APP_GEMINI_API_KEY。如果是 Vercel 部署，請在環境變數設定並 Redeploy。");
+      alert("請在 Vercel 設定 REACT_APP_GEMINI_API_KEY 金鑰。");
       return;
     }
     setIsJudging(true);
@@ -68,20 +65,19 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: `玩家回答：「${userAnswer}」` }] }],
-          systemInstruction: { parts: [{ text: `你是一位幽默的尾牙主持人。參考答案：「${reference}」。請依據創意給 0-100 分。必須回傳 JSON 格式: {"score": 數字, "feedback": "20字內講評"}` }] },
+          systemInstruction: { parts: [{ text: `你是一位幽默主持人。參考答案：「${reference}」。請依據創意給 0-100 分。必須回傳 JSON: {"score": 數字, "feedback": "20字講評"}` }] },
           generationConfig: { responseMimeType: "application/json" }
         })
       });
 
       const data = await response.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      const result = text ? JSON.parse(text) : { score: 10, feedback: "AI 好像在喝酒..." };
+      const result = text ? JSON.parse(text) : { score: 10, feedback: "AI 出神了..." };
       
       const newTotal = totalScore + result.score;
       setAiResult(result);
       setTotalScore(newTotal);
 
-      // 儲存到本地歷史紀錄 (取代 Firestore 寫入)
       setLocalHistory(prev => [{
         userName,
         question: QUESTIONS[currentIdx].text,
@@ -92,9 +88,7 @@ export default function App() {
       }, ...prev]);
 
     } catch (e) {
-      console.error("AI Error:", e);
-      const fallback = { score: 50, feedback: "網路有點擠，AI 給你友情分！" };
-      setAiResult(fallback);
+      setAiResult({ score: 50, feedback: "網路擁塞，給你友情分！" });
       setTotalScore(totalScore + 50);
     } finally {
       setIsJudging(false);
@@ -137,24 +131,10 @@ export default function App() {
       <main className="w-full max-w-7xl flex-grow">
         {gameState === 'LOBBY' && (
           <div className="max-w-xl mx-auto bg-slate-900 border border-slate-800 rounded-[40px] p-10 text-center space-y-8 animate-in fade-in zoom-in duration-500 shadow-2xl">
-            <div className="space-y-2">
-              <h2 className="text-5xl font-black tracking-tighter uppercase leading-tight">尾牙<br/><span className="text-yellow-500 underline decoration-4 underline-offset-8">智慧大擂台</span></h2>
-              <p className="text-slate-400 text-sm">輸入暱稱，測試你的幽默感與 AI 是否同步！</p>
-            </div>
+            <h2 className="text-5xl font-black tracking-tighter uppercase leading-tight">尾牙<br/><span className="text-yellow-500 underline decoration-4 underline-offset-8">智慧大擂台</span></h2>
             <div className="space-y-4">
-              <input 
-                type="text" 
-                maxLength={10}
-                placeholder="輸入您的參賽暱稱" 
-                className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:border-yellow-500 outline-none text-center text-xl font-bold transition-all text-white shadow-inner"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-              />
-              <button 
-                onClick={handleStart}
-                disabled={!userName.trim()}
-                className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-slate-950 font-black py-5 rounded-2xl text-xl transition-all active:scale-95 shadow-xl"
-              >
+              <input type="text" maxLength={10} placeholder="輸入您的參賽暱稱" className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:border-yellow-500 outline-none text-center text-xl font-bold transition-all text-white" value={userName} onChange={(e) => setUserName(e.target.value)} />
+              <button onClick={handleStart} disabled={!userName.trim()} className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-slate-950 font-black py-5 rounded-2xl text-xl transition-all active:scale-95 shadow-xl">
                 🚀 進入賽場
               </button>
             </div>
@@ -171,13 +151,7 @@ export default function App() {
                     <h2 className="text-3xl font-bold mt-4 leading-tight">{QUESTIONS[currentIdx].text}</h2>
                   </div>
                   <div className="relative group flex-grow">
-                    <textarea 
-                      value={currentInput} 
-                      onChange={(e) => setCurrentInput(e.target.value)} 
-                      className="w-full h-full min-h-[250px] bg-slate-900 border-2 border-slate-800 rounded-[32px] p-8 text-xl outline-none focus:border-yellow-500 transition-all resize-none shadow-xl text-white placeholder:text-slate-700" 
-                      disabled={isJudging || aiResult} 
-                      placeholder="在此輸入答案，AI 會在後台進行語義評分..." 
-                    />
+                    <textarea value={currentInput} onChange={(e) => setCurrentInput(e.target.value)} className="w-full h-full min-h-[250px] bg-slate-900 border-2 border-slate-800 rounded-[32px] p-8 text-xl outline-none focus:border-yellow-500 transition-all resize-none shadow-xl text-white" disabled={isJudging || aiResult} placeholder="在此輸入答案..." />
                     {!aiResult && !isJudging && (
                       <button onClick={handleSubmit} className="absolute bottom-6 right-6 bg-yellow-500 p-4 rounded-2xl text-slate-950 shadow-lg hover:scale-110 active:scale-90 transition-all">
                         <Send size={24} />
@@ -185,24 +159,8 @@ export default function App() {
                     )}
                   </div>
                   <div className="min-h-[120px]">
-                    {isJudging && (
-                      <div className="bg-slate-900/40 border border-dashed border-slate-700 p-8 rounded-[32px] flex flex-col items-center justify-center gap-3 animate-pulse text-slate-500">
-                        <Loader2 className="animate-spin text-yellow-500" />
-                        <p className="text-[10px] font-black uppercase tracking-widest">AI 正在審閱答案...</p>
-                      </div>
-                    )}
-                    {aiResult && (
-                      <div className="bg-slate-900 border-2 border-yellow-500/40 p-8 rounded-[32px] flex flex-col md:flex-row gap-6 items-center animate-in zoom-in shadow-2xl">
-                        <div className="min-w-[100px] text-center">
-                          <p className="text-[10px] text-slate-500 font-black uppercase mb-1">獲得分數</p>
-                          <div className="text-5xl font-black text-yellow-500">+{aiResult.score}</div>
-                        </div>
-                        <div className="w-px h-12 bg-slate-800 hidden md:block" />
-                        <div className="flex-1">
-                          <p className="text-lg italic font-medium text-slate-200 leading-relaxed">「{aiResult.feedback}」</p>
-                        </div>
-                      </div>
-                    )}
+                    {isJudging && <div className="bg-slate-900/40 border border-dashed border-slate-700 p-8 rounded-[32px] flex flex-col items-center justify-center gap-3 animate-pulse text-slate-500"><Loader2 className="animate-spin text-yellow-500" /><p className="text-[10px] font-black uppercase tracking-widest">AI 正在審閱答案...</p></div>}
+                    {aiResult && <div className="bg-slate-900 border-2 border-yellow-500/40 p-8 rounded-[32px] flex flex-col md:flex-row gap-6 items-center animate-in zoom-in shadow-2xl"><div className="min-w-[100px] text-center"><p className="text-[10px] text-slate-500 font-black uppercase mb-1">獲得分數</p><div className="text-5xl font-black text-yellow-500">+{aiResult.score}</div></div><div className="w-px h-12 bg-slate-800 hidden md:block" /><div className="flex-1"><p className="text-lg italic font-medium text-slate-200">「{aiResult.feedback}」</p></div></div>}
                   </div>
                 </>
               ) : (
@@ -213,16 +171,14 @@ export default function App() {
                     <p className="text-xs font-black text-slate-600 uppercase mb-2">最終累計得分</p>
                     <p className="text-7xl font-black text-yellow-500 tabular-nums">{totalScore}</p>
                   </div>
-                  <button onClick={() => window.location.reload()} className="mt-8 text-slate-500 hover:text-white transition-all font-bold text-sm uppercase flex items-center gap-2">
-                    <RefreshCw size={16} /> 重新挑戰
-                  </button>
+                  <button onClick={() => window.location.reload()} className="mt-8 text-slate-500 hover:text-white transition-all font-bold text-sm uppercase flex items-center gap-2"><RefreshCw size={16} /> 重新挑戰</button>
                 </div>
               )}
             </div>
 
             <div className="lg:col-span-5 flex flex-col gap-6">
               <div className="bg-yellow-500 rounded-[32px] p-8 text-slate-950 shadow-xl shadow-yellow-500/10">
-                <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">您的總體分</p>
+                <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">您的總計分</p>
                 <div className="text-6xl font-black tracking-tighter tabular-nums">{totalScore}</div>
               </div>
 
@@ -231,22 +187,14 @@ export default function App() {
                   <ListFilter size={18} /> 我的答題紀錄
                 </h3>
                 <div className="flex-grow overflow-y-auto mt-4 space-y-6 pr-2 custom-scrollbar">
-                  {localHistory.length === 0 ? (
-                    <p className="text-slate-700 text-center py-10 italic">尚未提交任何答案...</p>
-                  ) : (
+                  {localHistory.length === 0 ? <p className="text-slate-700 text-center py-10 italic">尚未提交答案...</p> : 
                     Object.entries(groupedFeed).map(([qText, answers]) => (
                       <div key={qText} className="space-y-3">
-                        <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700">
-                          <MessageSquareQuote size={14} className="text-yellow-500 flex-shrink-0" />
-                          <span className="text-xs font-bold text-slate-300 truncate">{qText}</span>
-                        </div>
+                        <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700"><MessageSquareText size={14} className="text-yellow-500 flex-shrink-0" /><span className="text-xs font-bold text-slate-300 truncate">{qText}</span></div>
                         <div className="space-y-2 pl-2">
                           {answers.map((msg, idx) => (
                             <div key={idx} className="bg-slate-800/30 p-3 rounded-xl border border-slate-700/30 text-xs">
-                              <div className="flex justify-between items-center mb-1">
-                                <span className="font-black text-blue-400">{msg.userName}</span>
-                                <span className="text-yellow-500 font-bold">+{msg.score}</span>
-                              </div>
+                              <div className="flex justify-between items-center mb-1"><span className="font-black text-blue-400">{msg.userName}</span><span className="text-yellow-500 font-bold">+{msg.score}</span></div>
                               <p className="text-slate-200 mb-1">「{msg.answer}」</p>
                               <p className="text-[10px] italic text-slate-500">{msg.feedback}</p>
                             </div>
@@ -254,16 +202,14 @@ export default function App() {
                         </div>
                       </div>
                     ))
-                  )}
+                  }
                 </div>
               </div>
             </div>
           </div>
         )}
       </main>
-      <footer className="mt-8 text-center opacity-30 pb-8 tracking-[0.3em] text-[8px] uppercase text-slate-500">
-        Standalone AI Engine v13.0 | Stability Priority
-      </footer>
+      <footer className="mt-8 text-center opacity-30 pb-8 tracking-[0.3em] text-[8px] uppercase text-slate-500">Standalone AI Engine v13.1 | Build Fixed</footer>
     </div>
   );
 }
