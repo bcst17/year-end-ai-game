@@ -1,17 +1,26 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc } from 'firebase/firestore';
-import { Trophy, User, Send, Volume2, Loader2, Sparkles, BrainCircuit, AlertCircle, RefreshCw, MessageSquareQuote, ChevronDown, ListFilter, Users } from 'lucide-react';
+import { Trophy, User, Send, Volume2, Loader2, Sparkles, BrainCircuit, AlertCircle, RefreshCw, MessageSquareQuote, ListFilter, Users } from 'lucide-react';
 
-// --- Firebase 核心初始化 (Rule 3) ---
-const firebaseConfig = JSON.parse(__firebase_config);
+// --- Firebase 配置 ---
+// 請注意：在正式部署環境中，我們直接在程式碼中定義或使用環境變數
+const firebaseConfig = {
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "", 
+  authDomain: "year-end-ai-game.firebaseapp.com",
+  projectId: "year-end-ai-game",
+  storageBucket: "year-end-ai-game.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abcdef"
+};
+
+// 只有在 firebaseConfig 有效時才初始化
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'semantic-ai-quiz-v3';
+const APP_ID_PATH = 'year-end-ai-game-v1'; // 這裡固定一個 ID 即可
 
-// --- 15 道開放式題目 ---
 const QUESTIONS = [
   { id: 1, text: "公司今年最熱門的午餐外送是什麼？", reference: "雞排飯或健康餐盒" },
   { id: 2, text: "請問主管最常掛在嘴邊的「口頭禪」是什麼？", reference: "Sync一下、看數據、有Q嗎" },
@@ -44,19 +53,17 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const apiKey = ""; 
 
-  // 1. 初始化 Auth (嚴格遵循 Rule 3)
+  // 從環境變數獲取 API Key
+  const apiKey = process.env.REACT_APP_GEMINI_API_KEY || ""; 
+
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        await signInAnonymously(auth);
       } catch (err) {
-        setErrorMsg("身份驗證失敗，請重整頁面。");
+        console.error("Auth Error:", err);
+        setErrorMsg("連線失敗，請嘗試重新載入。");
       }
     };
     initAuth();
@@ -67,28 +74,19 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. 監聽公開資料 (遵循 Rule 1, 2)
   useEffect(() => {
     if (!user) return;
-    
-    // 監聽排行榜：確保路徑為公共路徑
-    const scoreCol = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
+    const scoreCol = collection(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'scores');
     const unsubscribeScores = onSnapshot(scoreCol, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data() 
-      }));
-      // 確保 score 是數字並進行全員排序
-      const sortedData = [...data].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
-      setLeaderboard(sortedData);
-    }, (err) => console.error("Leaderboard listen failed:", err));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLeaderboard(data.sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)));
+    });
 
-    // 監聽即時答案牆
-    const feedCol = collection(db, 'artifacts', appId, 'public', 'data', 'feed');
+    const feedCol = collection(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'feed');
     const unsubscribeFeed = onSnapshot(feedCol, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setAnswerFeed(data);
-    }, (err) => console.error("Feed listen failed:", err));
+    });
 
     return () => {
       unsubscribeScores();
@@ -96,7 +94,6 @@ export default function App() {
     };
   }, [user]);
 
-  // 分類答案邏輯 (按題目分類)
   const groupedFeed = useMemo(() => {
     return answerFeed.reduce((acc, curr) => {
       const qText = curr.question;
@@ -107,8 +104,11 @@ export default function App() {
     }, {});
   }, [answerFeed]);
 
-  // 3. AI 評分核心邏輯
   const scoreWithAI = async (userAnswer, reference) => {
+    if (!apiKey) {
+      alert("系統未設定 API Key，無法進行 AI 評分");
+      return { score: 0, feedback: "API Key 缺失" };
+    }
     setIsJudging(true);
     setAiResult(null);
 
@@ -133,17 +133,10 @@ export default function App() {
       setAiResult(result);
       setTotalScore(newTotal);
 
-      // A. 更新個人總分
-      const userDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'scores', user.uid);
-      await setDoc(userDocRef, { 
-        score: newTotal,
-        name: userName,
-        uid: user.uid,
-        updatedAt: Date.now() 
-      }, { merge: true });
+      const userDocRef = doc(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'scores', user.uid);
+      await setDoc(userDocRef, { score: newTotal, name: userName, uid: user.uid, updatedAt: Date.now() }, { merge: true });
 
-      // B. 發布到即時答案牆
-      const feedColRef = collection(db, 'artifacts', appId, 'public', 'data', 'feed');
+      const feedColRef = collection(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'feed');
       await addDoc(feedColRef, {
         userName,
         question: QUESTIONS[currentIdx].text,
@@ -166,13 +159,8 @@ export default function App() {
     if (!userName.trim() || !user) return;
     setIsLoading(true);
     try {
-      const userDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'scores', user.uid);
-      await setDoc(userDocRef, { 
-        name: userName, 
-        score: 0, 
-        uid: user.uid, 
-        timestamp: Date.now() 
-      }, { merge: true });
+      const userDocRef = doc(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'scores', user.uid);
+      await setDoc(userDocRef, { name: userName, score: 0, uid: user.uid, timestamp: Date.now() }, { merge: true });
       setGameState('PLAYING');
     } catch (err) {
       setErrorMsg("資料初始化失敗。");
@@ -198,7 +186,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 font-sans selection:bg-yellow-500/20 flex flex-col items-center">
-      {/* 頁首 */}
       <header className="w-full max-w-7xl flex justify-between items-center mb-8 h-16">
         <div className="flex items-center gap-2">
           <div className="bg-yellow-500 p-2 rounded-xl shadow-lg shadow-yellow-500/10">
@@ -207,9 +194,9 @@ export default function App() {
           <h1 className="text-xl font-black italic tracking-tighter uppercase">AI Party Live</h1>
         </div>
         {user && (
-          <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-4 py-2 rounded-full shadow-lg">
+          <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-4 py-2 rounded-full">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-bold opacity-80">{userName || 'Connecting...'}</span>
+            <span className="text-xs font-bold">{userName || 'Connecting...'}</span>
           </div>
         )}
       </header>
@@ -217,16 +204,14 @@ export default function App() {
       <main className="w-full max-w-7xl flex-grow">
         {gameState === 'LOBBY' && (
           <div className="max-w-xl mx-auto bg-slate-900 border border-slate-800 rounded-[40px] p-10 text-center space-y-8 animate-in fade-in zoom-in duration-500 shadow-2xl">
-            <h2 className="text-5xl font-black tracking-tighter uppercase leading-tight">即時<br/><span className="text-yellow-500 underline decoration-4 underline-offset-8">智慧擂台</span></h2>
-            <p className="text-slate-500 font-medium italic text-sm">大家的答案將依題目分類即時呈現！</p>
-            
+            <h2 className="text-5xl font-black tracking-tighter uppercase">即時<br/><span className="text-yellow-500 underline decoration-4 underline-offset-8">智慧擂台</span></h2>
             <div className="space-y-4">
-              {errorMsg && <p className="text-red-400 text-xs bg-red-400/10 py-2 rounded-lg">{errorMsg}</p>}
+              {errorMsg && <p className="text-red-400 text-xs">{errorMsg}</p>}
               <input 
                 type="text" 
                 maxLength={10}
                 placeholder="輸入您的參賽暱稱" 
-                className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:border-yellow-500 outline-none text-center text-xl font-bold transition-all shadow-inner"
+                className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 focus:border-yellow-500 outline-none text-center text-xl font-bold transition-all"
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
                 disabled={isLoading}
@@ -234,7 +219,7 @@ export default function App() {
               <button 
                 onClick={handleStart}
                 disabled={!userName.trim() || isLoading || !authReady}
-                className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-slate-950 font-black py-5 rounded-2xl text-xl transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl shadow-yellow-500/10"
+                className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-slate-950 font-black py-5 rounded-2xl text-xl transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl"
               >
                 {isLoading ? <Loader2 className="animate-spin" /> : <>進入賽場 <Send size={20} /></>}
               </button>
@@ -243,9 +228,7 @@ export default function App() {
         )}
 
         {(gameState === 'PLAYING' || gameState === 'END') && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in slide-in-from-bottom duration-500 h-full max-h-[1200px]">
-            
-            {/* 左側：主交互區 */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full min-h-[600px]">
             <div className="lg:col-span-7 space-y-6 flex flex-col h-full">
               {gameState === 'PLAYING' ? (
                 <>
@@ -255,12 +238,10 @@ export default function App() {
                     </span>
                     <h2 className="text-3xl font-bold mt-4 leading-tight">{QUESTIONS[currentIdx].text}</h2>
                   </div>
-
                   <div className="relative group flex-grow">
                     <textarea 
                       value={currentInput}
                       onChange={(e) => setCurrentInput(e.target.value)}
-                      placeholder="您的答案將會依題目分類公開..."
                       className="w-full h-full min-h-[250px] bg-slate-900 border-2 border-slate-800 rounded-[32px] p-8 text-xl outline-none focus:border-yellow-500 transition-all resize-none shadow-xl disabled:opacity-50"
                       disabled={isJudging || aiResult}
                     />
@@ -270,120 +251,63 @@ export default function App() {
                       </button>
                     )}
                   </div>
-
-                  <div className="min-h-[120px]">
-                    {isJudging && (
-                      <div className="bg-slate-900/40 border border-dashed border-slate-700 p-8 rounded-[32px] flex flex-col items-center justify-center gap-3 animate-pulse">
-                        <Loader2 className="animate-spin text-yellow-500" size={24} />
-                        <p className="text-slate-500 font-black text-[10px] uppercase tracking-widest">AI 正在審閱並同步分類動態牆...</p>
-                      </div>
-                    )}
-                    {aiResult && (
-                      <div className="bg-slate-900 border-2 border-yellow-500/40 p-8 rounded-[32px] flex flex-col md:flex-row gap-6 items-center animate-in zoom-in">
-                        <div className="text-center min-w-[100px]">
-                          <p className="text-[10px] text-slate-500 font-black uppercase mb-1">獲得分數</p>
-                          <div className="text-5xl font-black text-yellow-500">+{aiResult.score}</div>
-                        </div>
-                        <div className="w-px h-12 bg-slate-800 hidden md:block" />
-                        <div className="flex-1">
-                          <p className="text-lg italic font-medium text-slate-200">「{aiResult.feedback}」</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 </>
               ) : (
-                <div className="bg-slate-900 border border-slate-800 rounded-[40px] p-12 text-center space-y-8 h-full flex flex-col justify-center items-center shadow-2xl min-h-[400px]">
-                  <Trophy size={64} className="text-yellow-500 mb-2 drop-shadow-lg" />
+                <div className="bg-slate-900 border border-slate-800 rounded-[40px] p-12 text-center flex flex-col justify-center items-center shadow-2xl min-h-[400px]">
+                  <Trophy size={64} className="text-yellow-500 mb-2" />
                   <h2 className="text-5xl font-black italic tracking-tighter uppercase">挑戰結束</h2>
-                  <div className="bg-slate-950 p-8 rounded-[32px] border border-slate-800 w-full max-w-sm shadow-inner">
-                    <p className="text-[10px] font-black text-slate-600 uppercase mb-2">您的最終分數</p>
-                    <p className="text-7xl font-black text-yellow-500 tabular-nums">{totalScore}</p>
-                  </div>
-                  <button onClick={() => window.location.reload()} className="text-slate-500 hover:text-white transition-all font-bold text-sm uppercase flex items-center gap-2">
-                    <RefreshCw size={16} /> 重新挑戰
-                  </button>
+                  <p className="text-7xl font-black text-yellow-500 tabular-nums">{totalScore}</p>
                 </div>
               )}
             </div>
-
-            {/* 右側：分類動態牆與全員排行榜 */}
             <div className="lg:col-span-5 flex flex-col gap-6 h-full min-h-[600px]">
-              
-              {/* 1. 分類動態牆 (佔比 3) */}
               <div className="bg-slate-900 rounded-[32px] p-6 border border-slate-800 flex flex-col flex-[3] shadow-2xl overflow-hidden min-h-[300px]">
                 <h3 className="text-sm font-black flex items-center gap-2 pb-4 border-b border-slate-800 uppercase tracking-widest text-blue-400">
-                  <ListFilter size={18} /> 分類動態牆 (按題目區分)
+                  <ListFilter size={18} /> 分類動態牆
                 </h3>
                 <div className="flex-grow overflow-y-auto mt-4 space-y-6 pr-2 custom-scrollbar">
-                  {Object.keys(groupedFeed).length === 0 ? (
-                    <p className="text-center text-slate-700 py-10 italic">尚未有回答紀錄...</p>
-                  ) : (
-                    Object.entries(groupedFeed).map(([qText, answers]) => (
-                      <div key={qText} className="space-y-3">
-                        <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700 sticky top-0 z-10">
-                          <MessageSquareQuote size={14} className="text-yellow-500 flex-shrink-0" />
-                          <span className="text-xs font-bold text-slate-300 truncate">{qText}</span>
-                        </div>
-                        <div className="space-y-2 pl-2">
-                          {answers.map((msg, idx) => (
-                            <div key={`${msg.id}-${idx}`} className="bg-slate-800/30 p-3 rounded-xl border border-slate-700/30 animate-in slide-in-from-right text-xs">
-                              <div className="flex justify-between items-center mb-1">
-                                <span className="font-black text-blue-400">{msg.userName}</span>
-                                <span className="text-yellow-500 font-bold">+{msg.score} 分</span>
-                              </div>
-                              <p className="text-slate-200">「{msg.answer}」</p>
-                            </div>
-                          ))}
-                        </div>
+                  {Object.entries(groupedFeed).map(([qText, answers]) => (
+                    <div key={qText} className="space-y-3">
+                      <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700">
+                        <span className="text-xs font-bold text-slate-300 truncate">{qText}</span>
                       </div>
-                    ))
-                  )}
+                      {answers.map((msg, idx) => (
+                        <div key={`${msg.id}-${idx}`} className="bg-slate-800/30 p-3 rounded-xl border border-slate-700/30 text-xs">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="font-black text-blue-400">{msg.userName}</span>
+                            <span className="text-yellow-500 font-bold">{msg.score} 分</span>
+                          </div>
+                          <p className="text-slate-200">「{msg.answer}」</p>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
                 </div>
               </div>
-
-              {/* 2. 全員排行榜 (佔比 2) - Debug 核心區 */}
               <div className="bg-slate-900 rounded-[32px] p-6 border border-slate-800 flex flex-col flex-[2] shadow-2xl overflow-hidden min-h-[250px]">
                 <div className="flex justify-between items-center pb-4 border-b border-slate-800">
                   <h3 className="text-sm font-black flex items-center gap-2 uppercase tracking-widest text-yellow-500">
                     <Trophy size={16} /> 全員排行榜
                   </h3>
-                  <div className="bg-slate-800 px-2 py-1 rounded-md flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
-                    <Users size={12} />
-                    <span>共 {leaderboard.length} 人</span>
+                  <div className="bg-slate-800 px-2 py-1 rounded-md text-[10px] font-bold text-slate-400">
+                    <Users size={12} className="inline mr-1" /> 共 {leaderboard.length} 人
                   </div>
                 </div>
-                
                 <div className="flex-grow overflow-y-auto mt-4 space-y-2 pr-2 custom-scrollbar">
-                  {leaderboard.length === 0 ? (
-                    <p className="text-center text-slate-700 py-10 italic">等待參賽者加入...</p>
-                  ) : (
-                    leaderboard.map((entry, i) => (
-                      <div 
-                        key={entry.id || i} 
-                        className={`flex justify-between items-center p-3 rounded-xl transition-all ${entry.uid === user?.uid ? 'bg-white text-slate-950 shadow-xl ring-2 ring-yellow-500 animate-pulse-slow' : 'bg-slate-800/40 hover:bg-slate-800/60'}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className={`text-xs font-black w-6 text-center ${entry.uid === user?.uid ? 'text-slate-900' : i === 0 ? 'text-yellow-400' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-orange-400' : 'opacity-40'}`}>
-                            {i + 1}
-                          </span>
-                          <span className="font-bold text-sm truncate max-w-[140px]">{entry.name || '無名氏'}</span>
-                        </div>
-                        <span className="font-black tabular-nums">{Number(entry.score) || 0}</span>
+                  {leaderboard.map((entry, i) => (
+                    <div key={entry.id || i} className={`flex justify-between items-center p-3 rounded-xl ${entry.uid === user?.uid ? 'bg-white text-slate-950' : 'bg-slate-800/40'}`}>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-sm">{i + 1}. {entry.name || '訪客'}</span>
                       </div>
-                    ))
-                  )}
+                      <span className="font-black">{entry.score || 0}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-
             </div>
           </div>
         )}
       </main>
-
-      <footer className="mt-8 text-center opacity-20 pb-8 tracking-[0.3em] text-[8px] uppercase">
-        Multi-Player Semantic AI System v5.1 | Stable Release
-      </footer>
     </div>
   );
 }
